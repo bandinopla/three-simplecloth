@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   root: '.',
+  base: "/three-simplecloth/",
   server: {
     open: true,
     port: 3000,
