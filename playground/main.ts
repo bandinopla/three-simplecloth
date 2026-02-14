@@ -206,7 +206,7 @@ if (WebGPU.isAvailable()) {
     sourceBtn.classList.add("source-btn");
     sourceBtn.textContent = "</>";
     sourceBtn.addEventListener("click", () => {
-        window.open("https://github.com/bandinopla/three-simplecloth");
+        window.open("https://github.com/bandinopla/three-simplecloth/blob/main/playground/main.ts");
     });
     document.body.appendChild(sourceBtn);
 } else {
