@@ -1,4 +1,5 @@
 import {
+	Bone,
     BufferAttribute,
     DoubleSide,
     Material,
@@ -254,6 +255,8 @@ type ClothConfig = {
 
 	/**
 	 * The root object to search for colliders. 
+	 * Colliders are expected to be empty objects with uniform scale and `userData.stickto="bonename"` OR `userData.clothCollider=true` properties.
+	 * The radius of the collider will be the absolute value of `scale.x * colliderRadiusMultiplier`.
 	 */
 	collidersRoot?: Object3D;
 
@@ -308,7 +311,7 @@ function getCollidersFrom( root:Object3D, skeleton:Skeleton, multiplier:number =
 	// collect colliders
 	//
 	root.traverse((o)=>{
-		if( o.userData.stickto )
+		if( o.userData.stickto || o.userData.clothCollider )
 		{
 			colliders.push({
 				position: o,
@@ -321,11 +324,16 @@ function getCollidersFrom( root:Object3D, skeleton:Skeleton, multiplier:number =
 	// attatch to skeleton and calculate world dimension
 	//
 	colliders.forEach( col => {
-		const bone = skeleton.getBoneByName( (col.position as Object3D).userData.stickto.replaceAll(/[\.\:]/g,"") );
 		const obj = col.position as Object3D;
+		let bone :Bone|undefined;
+		
+		if( obj.userData.stickto )
+		{
+			bone = skeleton.getBoneByName( obj.userData.stickto.replaceAll(/[\.\:]/g,"") );
 
-		if(!bone){
-			throw new Error("Bone not found for collider: " + obj.userData.stickto)+ " ???";
+			if( !bone ){
+				throw new Error("Bone not found for collider: " + obj.userData.stickto)+ " ???";
+			} 
 		} 
 		
 		scene.attach(obj);
@@ -336,7 +344,7 @@ function getCollidersFrom( root:Object3D, skeleton:Skeleton, multiplier:number =
 		col.radius = Math.abs( obj.getWorldScale(v).x ) * multiplier ;
 	 
 
-		bone!.attach( obj );
+		bone?.attach( obj );
 		//test... 
 
 	} );

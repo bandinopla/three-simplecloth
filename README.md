@@ -41,3 +41,9 @@ The third parameter is a config object:
 | `windPerSecond` | `Vector3` | Wind DIRECTION in world space (noise will be used to add variation). |
 | `gravityPerSecond` | `Vector3` | Gravity force in world space. |
 | `updateMaterial` | `function` | A function to override the current skinned mesh material. It receives the material and 2 TSL nodes: vertexNode and normalNode. 
+
+# Adding colliders
+The code will scan for objects in `collidersRoot` with `userData.stickto="bonename"` OR `userData.clothCollider=true` properties. It will use the scale X and will asume uniform scale, because colliders are spheres. And on every run it will update the position of the colliders so you can move them via code and the cloth will react to them.
+ 
+ # Collab / Improve
+ Pull requests welcome. If you can improve the math behind the physics, be my guest. I am not a physics expert, I just wanted to have a simple cloth simulation in three.js that I could use in my projects.
