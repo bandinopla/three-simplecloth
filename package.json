@@ -1,0 +1,39 @@
+{
+  "name": "three-simplecloth",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Simple cloth simulation for Three.js WebGPU",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bandinopla/three-simplecloth.git"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite --config vite.dev.config.ts",
+    "build": "vite build --config vite.lib.config.ts",
+    "build:web": "vite build --config vite.dev.config.ts",
+    "preview": "vite preview --config vite.dev.config.ts"
+  },
+  "peerDependencies": {
+    "three": "^0.182.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.182.0",
+    "three": "^0.182.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.1.0",
+    "vite-plugin-dts": "^4.5.0"
+  },
+  "license": "MIT"
+}

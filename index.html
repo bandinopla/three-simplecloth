@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>three-simplecloth — Dev Playground</title>
+    <style>
+      body { margin: 0; overflow: hidden; background: #000; }
+      canvas { display: block; }
+      #info {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        color: #fff;
+        font-family: system-ui, sans-serif;
+        font-size: 14px; 
+        text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+      }
+      .source-btn {
+        position: absolute;
+        bottom: 32px;
+        right: 32px;
+        color: black;
+		background-color: white;
+		box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+		border-radius: 114px;
+		padding: 18px;
+        font-family: system-ui, sans-serif;
+        font-size: 24px; 
+        text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+		cursor: pointer;
+		z-index: 2;
+      }
+	  a {
+		color: cyan;
+	  }
+    </style>
+  </head>
+  <body>
+    <div id="info">three-simplecloth playground (WebGPU)
+		<br/>
+		<h2><a href="https://www.npmjs.com/package/three-simplecloth">npm install three-simplecloth</a></h2>
+	</div>
+    <script type="module" src="/playground/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,1 @@
+export { SimpleCloth } from './SimpleCloth';
