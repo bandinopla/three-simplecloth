@@ -3,8 +3,12 @@
 ## What is this?
 A module you can use to turn pieces of meshes into cloth-like meshes that will move like cloth... kind of.
 
+>Play with the [online demo](https://bandinopla.github.io/three-simplecloth/)
+
 ## How does this work?
 You skin your mesh normally but then you vertex paint in red color the parts that you want to turn into "cloth" and then when you use this module you basically pass a reference to the mesh that contains this painting and it will turn it into a "cloth like" mesh, blending between normal skinned and cloth using this color as a mask.
+
+> Read: [Article explaining implementation](https://medium.com/@pablobandinopla/simple-cloth-simulation-with-three-js-and-compute-shaders-on-skeletal-animated-meshes-acb679a70d9f)
 
 ## Install
 ```bash
