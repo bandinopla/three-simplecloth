@@ -6,6 +6,10 @@ import WebGPU from "three/examples/jsm/capabilities/WebGPU.js";
 import { color, pass, sin, time, uv } from "three/tsl";
 import { bloom } from "three/examples/jsm/tsl/display/BloomNode.js";
 import { afterImage } from "three/examples/jsm/tsl/display/AfterImageNode.js";
+import { skirtDemo } from "./skirt-demo.js";
+import { DemoApp } from "./demo-type.js";
+
+const $querystring = new URLSearchParams( location.search);
 
 function bgGradient() {
     // create gradient texture with canvas
@@ -66,16 +70,22 @@ async function main() {
 	post.outputNode = afterImage( renderPass.add( bloomPass ), 0.6 );
 
     // --- Lighting ---
+	const ssize = 2;
     const rim = new THREE.PointLight(0xffffff, 10, 14);
     rim.position.set(-1, 1, -3);
+	rim.castShadow = true;
+	rim.shadow.bias = -0.0009;
+	rim.shadow.mapSize = new THREE.Vector2(1024 * 2, 1024 * 2); 
+
     scene.add(rim);
 
+	
     const dl = new THREE.DirectionalLight();
     dl.castShadow = true;
     dl.position.set(4, 5, 2);
     dl.shadow.bias = -0.0009;
     dl.shadow.camera.far = 11;
-    const ssize = 2;
+    
     dl.shadow.mapSize = new THREE.Vector2(1024 * 2, 1024 * 2);
     dl.shadow.camera.top = -ssize;
     dl.shadow.camera.bottom = ssize;
@@ -92,7 +102,49 @@ async function main() {
 	controls.autoRotateSpeed = 0.5;
     // --- Cloth ---
 
-    new GLTFLoader().load("dance.glb", (gltf) => {
+	let playDefaultDemo = true;
+
+	const otherDemos : { id:string, name:string, start:DemoApp, credits?: { title:string, author:string, link:string }[] }[] = [ 
+		{
+			id:"skirt",
+			name:"Skirt demo",
+			start: skirtDemo ,
+			credits: [
+				{
+					title:"Woman photogrammetry",
+					author: "max0sAnchez84",
+					link: "https://sketchfab.com/3d-models/woman-posing-8849b89093dd4028915e6aebfe2339c9"
+				}
+			]
+		}
+	]
+
+	const demoFolder = inspector.createParameters("Demos")
+	const goto = (demo:string|null)=>()=>window.open(import.meta.env.BASE_URL + (demo?`?demo=${demo}`:""), "_self")
+		
+	
+
+	demoFolder.add({ default:goto(null) },"default").name("Animated Dance demo");
+	otherDemos.forEach(d => {
+		demoFolder.add({ [d.id]:goto(d.id) },d.id).name(d.name);
+	})
+
+	if( $querystring.has("demo") ) { 
+
+		const demo = otherDemos.find(d => d.id === $querystring.get("demo"))
+		if( demo ) {
+			playDefaultDemo = false;
+			onEnterFrame = demo.start(renderer, scene, camera, controls, inspector);
+
+			const credits = document.getElementById("credits")!;
+			credits.innerHTML = ""
+			demo.credits?.forEach(c => {
+				credits.innerHTML += `<div>* ${c.title} by <a href="${c.link}"><strong>${c.author}</strong></a></div>`;
+			})
+		}
+	}
+
+    playDefaultDemo && new GLTFLoader().load("dance.glb", (gltf) => {
         scene.add(gltf.scene);
         scene.traverse((o) => {
             if (o instanceof THREE.SkinnedMesh) {

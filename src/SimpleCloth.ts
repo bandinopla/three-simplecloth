@@ -8,15 +8,12 @@ import {
     Object3D,
     Scene,
     Skeleton,
-    Texture,
     Vector3,
     type SkinnedMesh,
 } from "three";
 import { ShaderCallNodeInternal } from "three/src/nodes/TSL.js";
 import {
     attribute,
-    cameraProjectionMatrix,
-    cameraViewMatrix,
     computeSkinning,
     Fn,
     If,
@@ -31,13 +28,12 @@ import {
     time,
     triNoise3D,
     uniform,
-    vec4,
     float,
 	frontFacing,
 	cross,
 	transformNormalToView,
-	texture,
-	color,
+	uint,
+	bitcast,
 } from "three/tsl";
 import {
 	MeshPhysicalNodeMaterial,
@@ -52,6 +48,23 @@ const v = new Vector3();
 type Collider = {
 	radius:number,
 	position:Object3D|Vector3
+}
+
+export type MagnetAPI = {
+	/**
+	 * Updates the world position of the magnet by re-reading the original vector 3 passed as position
+	 */
+	update:VoidFunction
+
+	/**
+	 * Updates the world position of the magnet by setting it to these values
+	 */
+	updatePosition:(x:number, y:number, z:number) => void 
+
+	/**
+	 * clears every vertex from this magnet. This is the "release" action.
+	 */
+	deactivate:VoidFunction
 }
 
 // function hash3(a: number, b: number, c: number) {
@@ -122,14 +135,9 @@ function calculateGeometry(mesh: Mesh, $maskAttribute = "color") {
             //
             // convert to world space.
             //
-            v.set(x, y, z);
-
-			
-
-			const w = `${v.toArray()} ---> ${mesh.scale.toArray()} /// `;
+            v.set(x, y, z); 
      
-v.applyMatrix4(mesh.matrixWorld)
-			console.log(w, v.toArray());
+			v.applyMatrix4(mesh.matrixWorld) 
 
             vPos.push(v.x, v.y, v.z, weight);
          
@@ -142,8 +150,7 @@ v.applyMatrix4(mesh.matrixWorld)
     //
     // now, create the "springs" ( the connections between them )
     //
-    const springs: number[] = []; // unique index id of a A-B vertex pair.
-    const springRestLengths: number[] = []; // length that the A-B pair must keep from each other.
+    const springs: number[] = []; // unique index id of a A-B vertex pair + rest length float + unused 
     const vA = new Vector3();
     const vB = new Vector3();
     const springDefined = new Set<string>();
@@ -164,24 +171,19 @@ v.applyMatrix4(mesh.matrixWorld)
             return;
         }
 
-        const springID = springs.length/2;
+        const springID = springs.length/4;
 
-        springs.push(A, B);
+        springs.push(A, B, 0, 0);
 
         addSpringToVertex(A, springID);
-        addSpringToVertex(B, springID); 
-		 
-        springRestLengths.push(0);
+        addSpringToVertex(B, springID);  
 
         springDefined.add(hash);
     };
 
     //
     // now for each triangle, create a spring from each edge...
-    //
-	/**
-	 * 
-	 */
+    // 
     const gIndices = geometry.index!.array;
 
 
@@ -236,8 +238,7 @@ v.applyMatrix4(mesh.matrixWorld)
         indices, // for each vertice, stores the index of the unique one in the vPos array
         vPos: new Float32Array(vPos), // 4 components, a vector 3 positions of the unique vertices ( in world space ) + the weight
 
-        springs: new Uint32Array(springs), // Pair of index points in vPos representing a spring
-        restLengths: new Float32Array(springRestLengths), //rest lengths of each spring ( in world space )
+        springs: new Uint32Array(springs), // Pair of index points in vPos representing a spring 
     };
 }
 
@@ -281,15 +282,21 @@ type ClothConfig = {
 	gravityPerSecond?:Vector3 
 
 	/**
+	 * How many magnets to use ( cloch grab manipulators )
+	 */
+	magnets:number;
+
+	/**
 	 * The material used by the SkinnedMesh to turn into "cloth" must apply and use these TSL nodes...
 	 * By default it will try to guess the most common case when you import a model from blender...
 	 * 
-	 * @param vertexNode 
+	 * @param positionNode 
 	 * @param normalNode 
 	 * @returns 
 	 */
-	updateMaterial: ( base:Material, vertexNode:Node, normalNode:Node ) => NodeMaterial
+	updateMaterial: ( base:Material, positionNode:Node, normalNode:Node ) => NodeMaterial
 }
+ 
 
 /**
  * Looks for objects ( empty uniformlyscaled Spheres from blender ) with a userData.stickto = "name of a bone"
@@ -329,7 +336,7 @@ function getCollidersFrom( root:Object3D, skeleton:Skeleton, multiplier:number =
 		
 		if( obj.userData.stickto )
 		{
-			bone = skeleton.getBoneByName( obj.userData.stickto.replaceAll(/[\.\:]/g,"") );
+			bone = skeleton.getBoneByName?.( obj.userData.stickto.replaceAll(/[\.\:]/g,"") );
 
 			if( !bone ){
 				throw new Error("Bone not found for collider: " + obj.userData.stickto)+ " ???";
@@ -344,8 +351,7 @@ function getCollidersFrom( root:Object3D, skeleton:Skeleton, multiplier:number =
 		col.radius = Math.abs( obj.getWorldScale(v).x ) * multiplier ;
 	 
 
-		bone?.attach( obj );
-		//test... 
+		bone?.attach( obj ); 
 
 	} );
 
@@ -353,11 +359,11 @@ function getCollidersFrom( root:Object3D, skeleton:Skeleton, multiplier:number =
 	return colliders;
 }
 
-function assumeTheModelCameFromBlenderAndWasTexturedNormally(base:Material, vertexNode:ShaderCallNodeInternal, normalNode:ShaderCallNodeInternal ) {
+function assumeTheModelCameFromBlenderAndWasTexturedNormally(base:Material, posNode:ShaderCallNodeInternal, normalNode:ShaderCallNodeInternal ) {
 	if( "isNodeMaterial" in base )
 	{
 		const m = base as NodeMaterial;
-		m.vertexNode = vertexNode;
+		m.positionNode = posNode;
 		m.normalNode = normalNode;
 		return m;
 	}
@@ -372,7 +378,7 @@ function assumeTheModelCameFromBlenderAndWasTexturedNormally(base:Material, vert
 			depthWrite: base.depthWrite,
 			depthTest: base.depthTest,
 		});
-		m.vertexNode = vertexNode;
+		m.positionNode = posNode;
 		m.normalNode = normalNode;
 
 		m.color = base.color;
@@ -419,6 +425,7 @@ function setupClothOnSkinnedMesh(
 		windPerSecond: new Vector3(0,0,0),
 		gravityPerSecond: new Vector3(0, -0.3,0), 
 		updateMaterial: assumeTheModelCameFromBlenderAndWasTexturedNormally,
+		magnets: 0,
 		...config
 	}
 
@@ -431,8 +438,7 @@ function setupClothOnSkinnedMesh(
         indices,
         uniqueCount,
         vPos,
-        springs,
-        restLengths,
+        springs, 
         springsPointer,
         springsPerVertexArray,
 		vFaces,
@@ -442,14 +448,13 @@ function setupClothOnSkinnedMesh(
 	if( $cfg.logStats ){
 		console.group("Stats") 
 		console.log("vertices", uniqueCount); 
-		console.log("edges", springs.length/2); 
-		console.log("faces", vFaces.length/3);
-		console.log("rest lengths", restLengths.length);
+		console.log("edges", springs.length/4); 
+		console.log("faces", vFaces.length/3); 
 	
 
 		for(let i=0; i<uniqueCount; i++){
 			let hasString = false;
-			for( let j=0; j<springs.length; j+=2){
+			for( let j=0; j<springs.length; j+=4){
 				if(springs[j] === i || springs[j+1] === i){
 					hasString = true;
 					break;
@@ -499,10 +504,25 @@ function setupClothOnSkinnedMesh(
     const vForceStore = instancedArray(uniqueCount, "vec3") ; 
 
 	/**
+	 * (I know this is messy...)
 	 * For each unique vertex, this is a pointer to the location in `vSpringsPerVertexArray` where the list of springs for that vertex begins.
 	 * It starts with "count" followed by the IDs of each spring in the `springsStore` array
+	 * --
+	 * .x = pointer to the location in `vSpringsPerVertexArray` where the list of springs for that vertex begins.
+	 * .y = magnet index
 	 */
-    const vSpringsPointer = instancedArray(springsPointer, "uint");
+	const vVertexIntsArray = new Uint32Array( uniqueCount * 2 );
+	for(let i=0; i<uniqueCount; i++){
+		vVertexIntsArray[i*2] = springsPointer[i];
+		vVertexIntsArray[i*2+1] = 0;
+	}
+
+	/**
+	 * 2 Ids packed. 
+	 * .x = pointer to the location in `vSpringsPerVertexArray` where the list of springs for that vertex begins.
+	 * .y = magnet index
+	 */
+    const vVertexInts = instancedArray(vVertexIntsArray, "uvec2");
 
 	/**
 	 * Contains [ count, ID1, ID2, ID3, count, ID1, ID2, count, ID etc... ]
@@ -516,7 +536,7 @@ function setupClothOnSkinnedMesh(
 	/**
 	 * How many springs (edges) the cloth has. It will equal the number of edges of the mesh.
 	 */
-    const totalSprings = springs.length / 2; // because each spring has 2 vertices
+    const totalSprings = springs.length / 4; // because each spring has 2 vertices + 1 rest length + 1 unused
 
 	/**
 	 * Total number of vertices in the mesh (not the unique vertices, the actual mesh like the one you see in Blender's stats)
@@ -524,30 +544,28 @@ function setupClothOnSkinnedMesh(
     const countOfPoints = indices.length;
 
 	/**
-	 * Stores a pair of A,B ids. (id of the unique vertices that this spring will try to keep at a certain distance )
+	 * Stores:
+	 * XY: a pair of A,B IDs. (id of the unique vertices that this spring will try to keep at a certain distance )
+	 * Z: rest length of the spring ( in world space )
+	 * W: unused
 	 */
-    const springsStore = instancedArray(springs, "ivec2");
-
-	/**
-	 * How strong the spring is pulling the vertices
-	 */
-    const springForceStore = instancedArray(totalSprings, "vec3");
-
-	/**
-	 * The target distance the spring will try to keep between the two vertices it connects.
-	 */
-    const restLengthsStore = instancedArray(restLengths, "float");
+    const springsStore = instancedArray(springs, "uvec4"); 
 
 	/**
 	 * array triplets defining a face ( a triangle )
 	 */
-	const vFacesStore = instancedArray(vFaces, "ivec3");
-	//const vVertexToFaceStore = instancedArray(vVertexToFace, "uint");
+	const vFacesStore = instancedArray(vFaces, "uvec3"); 
  
 	/**
 	 * basically a map from each mesh's vertex to the ID of the unique spatial vertlet. ( since many vertices may exist in the space spatial position )
 	 */
     const indicesStore = instancedArray(indices, "uint");
+
+
+	const magnet = instancedArray(Math.max(1, $cfg.magnets), "vec4"); 
+	const magnetToAssign = uniform(0,"uint");
+
+
     const worldMatrix = objectWorldMatrix(mesh);
 
 	/**
@@ -558,7 +576,7 @@ function setupClothOnSkinnedMesh(
 	/**
 	 * Position XYZ and Radius W
 	 */
-	const collidersArray = new Float32Array((colliders?.length ?? 0) * 4);
+	const collidersArray = new Float32Array(Math.max(1, colliders?.length ?? 0) * 4);
 	const colliderAttr = new StorageInstancedBufferAttribute(collidersArray, 4);
 	const collidersStore = storage(colliderAttr, "vec4"); 
 
@@ -591,7 +609,7 @@ function setupClothOnSkinnedMesh(
 
         const uIndex = indicesStore.element(instanceIndex);
         const wPos = vPosStore.element(uIndex); 
-        const factor = wPos.w.pow(2); // 1 = skinned (Pinned), 0 = cloth (Simulated)
+        const factor = wPos.w;//.pow(2); // 1 = skinned (Pinned), 0 = cloth (Simulated)
 
         const skinningWorldPosition = worldMatrix.mul(skinningPosition) ;
 
@@ -611,34 +629,7 @@ function setupClothOnSkinnedMesh(
 	 * Calculates the force of each spring.
      * This iterates per SPRING (linear with number of springs).
 	 */
-	const computeSpringForces = Fn(()=>{
-
-		If(instanceIndex.lessThan(totalSprings), () => {
-			const vertexIds = springsStore.element( instanceIndex );
-			const restLength = restLengthsStore.element( instanceIndex ) ;
-
-			const Ai = vertexIds.x;
-			const Bi = vertexIds.y; 
-
-			const posA = vPosStore.element( Ai ).xyz; // world space
-			const postB = vPosStore.element( Bi ).xyz; // world space 
-
-			const fA = vForceStore.element(Ai);
-			const fB = vForceStore.element(Bi);
-
-			const delta = postB.sub(posA);
-			const dist = delta.length().max(0.000001);
-			const dir = delta.div(dist);
-
-			const relVelocity = fB.sub(fA);
-			const damping = relVelocity.dot(dir).mul(0.1);
-
-			const force = dist.sub(restLength).mul(stiffnessUniform) .mul(dir).mul(0.5);
-
-			springForceStore.element(instanceIndex).assign( force );  
-		}); 
-
-	})().compute( totalSprings ).setName("compute Spring Forces"); 
+ 
 
     /**
      * < COMPUTE VERTEX FORCES >
@@ -652,11 +643,14 @@ function setupClothOnSkinnedMesh(
 		});
 
 		const position = vPosStore.element( instanceIndex );
-		const force = vForceStore.element( instanceIndex ).toVar() ; 
-		const mask = (position.w).oneMinus().pow(2); // If w=1 (pinned), mask=0. If w=0 (simulated), mask=1.
+		const force = vForceStore.element( instanceIndex ) ; 
+		const mask = (position.w).oneMinus(); //.pow(2); // If w=1 (pinned), mask=0. If w=0 (simulated), mask=1.
  
 	
-		const springPointer = vSpringsPointer.element(instanceIndex);
+	
+		const vertexInts = vVertexInts.element(instanceIndex);
+		const springPointer = vertexInts.x;
+		
         // springsPerVertexArray layout: [count, id1, id2, ...]
         const springCount = vSpringsPerVertexArray.element(springPointer);
 
@@ -670,17 +664,26 @@ function setupClothOnSkinnedMesh(
 	            ({ i }) => {
 	                const springIndex = vSpringsPerVertexArray.element(i).toVar("springId"); 
 	                const spring = springsStore.element(springIndex).toVar();
-	                const springForce = springForceStore.element(springIndex) ; 
+	               
+					//
+					// Inline spring force calculation
+					//
+					const restLength = bitcast(spring.z, "float") ;
+					const Ai = spring.x;
+					const Bi = spring.y;
 
-					If( spring.x.equal(instanceIndex), ()=>{
+					// identify neighbor
+					const neighborIndex = select(Ai.equal(instanceIndex), Bi, Ai);
 
-						force.addAssign(springForce);
-					})
-					.Else(()=>{
-						force.subAssign(springForce);
-					})
- 
+					const posNeighbor = vPosStore.element(neighborIndex).xyz;
+					const delta = posNeighbor.sub(position.xyz);
+					const dist = delta.length().max(0.000001);
+					const dir = delta.div(dist);
 					
+					// Force
+					const f = dist.sub(restLength).mul(stiffnessUniform).mul(0.5);
+					
+					force.addAssign(dir.mul(f));
 	            },
 	        );
 
@@ -715,11 +718,27 @@ function setupClothOnSkinnedMesh(
 		//force.mulAssign(mask);
 
 		force.addAssign(gravityUniform.mul(mask).mul(dt ) ); 
- 
-        // Zero out force if pinned (mask=0) so position doesn't drift
-        // Position update: position += force * mask
-	 	position.xyz.addAssign( force    );
-		//position.y.addAssign(gravityUniform.mul(mask).mul(dt) );
+
+		//
+		// Magnet "attraction"
+		//
+		const magnetIndex = vVertexInts.element(instanceIndex).y;
+
+		If( magnetIndex.greaterThan(0), ()=>{
+
+			const magnetData = magnet.element(magnetIndex.sub(1)) ;
+			const magnetPosition = magnetData.xyz;
+			const magnetStrength = magnetData.w;
+
+			If( magnetStrength.greaterThan(0), ()=>{
+				const magnetForce = magnetPosition.sub(position.xyz).mul(magnetStrength) ;
+				position.xyz.addAssign(magnetForce);
+			}) 
+
+		}) 
+		.Else(()=>{
+			position.xyz.addAssign( force    );
+		}) 
  
 		
 	 
@@ -728,10 +747,14 @@ function setupClothOnSkinnedMesh(
 		
 	})().compute( uniqueCount ).setName("compute Vertex Forces"); 
 
+	/**
+	 * < CALCULATE REST LENGTHS>
+	 * the leght of each spring is calculated and stored in the Z component of the spring data.
+	 */
 	const calculateRestLengths = Fn(()=>{
 		If(instanceIndex.lessThan(totalSprings), () => {
 			const vertexIds = springsStore.element( instanceIndex );
-			const restLength = restLengthsStore.element( instanceIndex ) ;
+			const restLength = vertexIds.z ;
 
 			const Ai = vertexIds.x;
 			const Bi = vertexIds.y; 
@@ -741,45 +764,71 @@ function setupClothOnSkinnedMesh(
 
 			const delta = posB.sub(posA);
 			const dist = delta.length().max(0.000001);
-			restLength.assign(dist);
+
+			restLength.assign( bitcast(dist, "uint") );
  
 
 		});
-	})().compute( totalSprings ).setName("calculate Rest Lengths"); 
+	})().compute( totalSprings ).setName("calculate Rest Lengths");  
 
-	const discriminate = Fn(() => {
+	/**
+	 * Scans all vertices and assigns the nearest vertex to the magnet.
+	 * Check the length of each spring and pick the closest one, then assign that one to the magnet.
+	 */
+	const assignVerticesToMagnet = Fn(() => { 
 
-		If(instanceIndex.lessThan(totalSprings), () => {
+	    const magnetPosition = magnet.element(0).xyz;
+	    const selectedIndex = uint(0).toVar();
+	    const minDist = float(10000).toVar("minDist");  // sentinel — no special casing needed
 
-			const vertexIds = springsStore.element( instanceIndex );
-			const restLength = restLengthsStore.element( instanceIndex ) ;
+		Loop( uniqueCount, ({ i })=>{
 
-			const Ai = vertexIds.x;
-			const Bi = vertexIds.y; 
+			const vertlet = vPosStore.element(i) ; 
+			const position = vertlet.xyz ; 
+			const dist = position.sub(magnetPosition).length() ; 
 
-			const posA = vPosStore.element(Ai);
-			const posB = vPosStore.element(Bi);
-
-			If( restLength.greaterThan(0), ()=>{
-				posA.y.assign(restLength);
-				posB.y.assign(restLength);
+			If( dist.lessThan(minDist), ()=>{
+				minDist.assign(dist);
+				selectedIndex.assign(i); 
 			})
+			
+		}) ;
 
-		});
-		
-	})().compute( totalSprings ).setName("discriminate");
+		const ids = vVertexInts.element(selectedIndex);
+		ids.y.assign(magnetToAssign.add(1));
+	    
+
+	})().compute(1).setName("assign Vertices To Magnet"); 
+
+	/**
+	 * Removes vertices from the magnet.
+	 * Check the y component of the vertex data and if it is equal to the magnetToAssign uniform, 
+	 * then remove the vertex from the magnet.
+	 */
+	const removeVerticesFromMagnet = Fn(() => {
+
+		If( instanceIndex.lessThan(uniqueCount), ()=>{
  
-    // Visualization material
-    const vertexNode = Fn(() => {
-            const customPosition = vPosStore.element(
-                attribute("uniqueIndex", "uint"),
-            );
+	        const ids = vVertexInts.element(instanceIndex);
 
-            return cameraProjectionMatrix
-                .mul(cameraViewMatrix)
-                .mul(vec4(customPosition.xyz, 1.0));
-        })();
+	        If(ids.y.equal(magnetToAssign.toUint().add(1)), () => {
+	            ids.y.assign(0);
+	        });
+		});
+ 
+	})().compute(uniqueCount).setName("remove Vertices From Magnet");
+  
 
+	const positionNode_ = Fn(()=>{
+		const uIndex = attribute("uniqueIndex", "uint");
+		const position = vPosStore.element(uIndex).xyz;
+		return worldMatrixInverseUniform.mul(position);
+	})();
+	// hack(?) to make it NOT re-skin after positionNode changes.
+	// without this, after the positionNode runs, the skinning process will change the positions based on the skeleton.
+	// but we already did that in the updateSkinningPoints compute node. Setting this to false apparently skips that... 
+	mesh.isSkinnedMesh = false;
+	
 	const calculateNormal = Fn(() => { 
 		const uIndex = attribute("faceIndex", "uint");
 		const face = vFacesStore.element(uIndex);
@@ -801,6 +850,10 @@ function setupClothOnSkinnedMesh(
 	const vNormal = calculateNormal().toVarying();
 	const normalNode = select(frontFacing, vNormal, vNormal.negate());
 
+	/**
+	 * updates the positions of the colliders in the colliderAttr array.
+	 * This is called every frame.
+	 */
 	const updateCollidersPositions = ()=>{
 		if(!colliders?.length){
 			return;
@@ -829,26 +882,41 @@ function setupClothOnSkinnedMesh(
 		colliderAttr.needsUpdate = true;
 	}
 
-	mesh.material = $cfg.updateMaterial!(mesh.material as Material, vertexNode, normalNode); 
+	mesh.material = $cfg.updateMaterial!(mesh.material as Material, positionNode_, normalNode);  
+	
 	
 	worldMatrixInverseUniform.value.copy(mesh.matrixWorld).invert();
 
-    // Initialization compute
-	renderer.compute( initializeSkinningPosition );
-	renderer.compute( calculateRestLengths ); 
- 
+	let init = false;
+
+	//
+	// I do it this way because if you set the position of the rig before adding it to the scene it will calculate all wrong
+	// and I haven't figured out how to fix that yet.
+	//
+	requestAnimationFrame(()=>{
+		renderer.compute( initializeSkinningPosition );
+		renderer.compute( calculateRestLengths ); 
+		init = true;
+	})
+
+
     return {
 
 		stiffnessUniform,
 		dampeningUniform,
 		gravityUniform,
 		windUniform,
+		colliders, 
 
 		/** 
+		 * Runs the cloth simulation...
+		 * 
 		 * @param delta seconds passed since last render
 		 * @param steps number of steps to run the simulation ( more steps = more "stable" but slower ) 
 		 */
         update: (delta: number, steps=11) => {
+
+			if( !init ) return;
 
 			mesh.updateMatrixWorld();
 
@@ -865,10 +933,53 @@ function setupClothOnSkinnedMesh(
 
 			for(let i=0; i<steps; i++ )
 			{
-				renderer.compute(computeSpringForces);
 				renderer.compute(computeVertexForces);
 			} 
         },
+
+		/**
+		 * Grab the closest vertex to the given magnet. An object to update the magnet position is returned. 
+		 * This is designed so that when you call this, it is assumed to be during a "grab" action. You then
+		 * should call the `deactivate` callback to produce the "release" action.
+		 * 	
+		 * @param magnetIndex Index of the magnet to use.
+		 * @param worldPos World position. This object now controls the position of the magnet. you can change the XYZ.
+		 * @param strength Strength of the magnet. Default is .5.
+		 * @returns An object with update and release methods.
+		 */
+		activateMagnet: ( magnetIndex:number, worldPos:Vector3, strength = 1 ) => { 
+ 
+ 
+			const updateMagnetPosition = ()=>{
+				//
+				// set the value of the magnet to use
+				//
+				magnet.value.setXYZW(magnetIndex , worldPos.x, worldPos.y, worldPos.z, strength);
+				magnet.value.needsUpdate = true; 
+			}
+
+			mesh.updateMatrixWorld();
+
+			magnetToAssign.value = magnetIndex;  
+
+			updateMagnetPosition()
+			
+			renderer.compute(assignVerticesToMagnet);   
+
+			return {
+				update: updateMagnetPosition,
+				updatePosition: (x:number, y:number, z:number)=>{
+					worldPos.set(x, y, z);
+					updateMagnetPosition();
+				},
+				deactivate: ()=>{
+					magnet.value.setXYZW(magnetIndex, 0, 0, 0, 0);
+					magnet.value.needsUpdate = true;
+					magnetToAssign.value = magnetIndex;
+					renderer.compute(removeVerticesFromMagnet);
+				}
+			}
+		}
     };
 }
 

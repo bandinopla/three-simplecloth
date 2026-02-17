@@ -1,7 +1,7 @@
 > Based on: https://github.com/mrdoob/three.js/blob/a58e9ecf225b50e4a28a934442e854878bc2a959/examples/webgpu_compute_cloth.html
 
 ## What is this?
-A module you can use to turn pieces of meshes into cloth-like meshes that will move like cloth... kind of.
+A module you can use to turn pieces of meshes into cloth-like meshes that will move like cloth... kind of. It has support for colliders (spheres) and grabbing and interacting with the cloth.
 
 >Play with the [online demo](https://bandinopla.github.io/three-simplecloth/)
 
@@ -24,7 +24,7 @@ import { SimpleCloth } from "three-simplecloth";
 // this will modify the material of the "clothing" Skinned mesh
 // and return a handler you must call to update the cloth simulation.
 //
-const cloth = SimpleCloth.onSkinnedMesh( clothing, renderer );
+const cloth = SimpleCloth.onSkinnedMesh( clothing, renderer, { ...config... } );
 
 function animate(delta: number) {
 	cloth.update(delta);
@@ -45,9 +45,28 @@ The third parameter is a config object:
 | `windPerSecond` | `Vector3` | Wind DIRECTION in world space (noise will be used to add variation). |
 | `gravityPerSecond` | `Vector3` | Gravity force in world space. |
 | `updateMaterial` | `function` | A function to override the current skinned mesh material. It receives the material and 2 TSL nodes: vertexNode and normalNode. 
+| `magnets` | `number` | [Optional] How many magnets will interact with the cloth (used for grabbing vertices)
 
 # Adding colliders
 The code will scan for objects in `collidersRoot` with `userData.stickto="bonename"` OR `userData.clothCollider=true` properties. It will use the scale X and will asume uniform scale, because colliders are spheres. And on every run it will update the position of the colliders so you can move them via code and the cloth will react to them.
+
+# Magnets: Grabbing the cloth
+To create the interaction of grabbing and relesing the cloth the system is designed to, when provided a point in world space, find the closest vertex to that point and "grab" it. Then, you call a callback to release it.
+
+```javascript
+// activate magnet at index 0
+const grabHandler = yourCloth.activateMagnet( 0, pointInTheSceneOrObject3D );
+
+// later at some point in your code, to move it... 
+grabHandler.update(); // use this if you originally passed an object3d that you are moving yourself... this method will sync the position.
+
+// If you want to manually pass the values you can call
+grabHandler.updatePosition(x,y,z);
+
+//Then when you want to release it so the vertex go back to normal...
+grabHandler.deactivate()
+```
+
  
  # Collab / Improve
  Pull requests welcome. If you can improve the math behind the physics, be my guest. I am not a physics expert, I just wanted to have a simple cloth simulation in three.js that I could use in my projects.
