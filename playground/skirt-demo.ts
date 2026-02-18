@@ -23,6 +23,7 @@ import { SimpleCloth } from "../src";
 import { color, Fn, positionLocal, uv } from "three/tsl";
 import { Inspector } from "three/examples/jsm/inspector/Inspector.js";
 import { MagnetAPI } from "../src/SimpleCloth";
+import { setupClothInspector } from "./utils/clothInspector";
 
 export const skirtDemo: DemoApp = (
     renderer: WebGPURenderer,
@@ -92,39 +93,7 @@ export const skirtDemo: DemoApp = (
 		.fadeIn(3);
 
 		//-------------------------- GUI --------------------------
-		//#region GUI
-		const folder = inspector.createParameters("cloth");
-        folder
-            .add(cloth.stiffnessUniform, "value", 0.1, 0.6, 0.01)
-            .name("stiffness") 
-        folder
-            .add(cloth.dampeningUniform, "value", 0.01, 1, 0.01)
-            .name("dampening") 
-        folder
-            .add(cloth.gravityUniform.value, "y", -1, 0, 0.01)
-            .name("gravity") 
-			;
-        folder.add(cloth.windUniform.value, "x", -0.1, 0.1, 0.01).name("wind") 
-		folder.add({ debug:false }, "debug").onChange((v)=>{
-			cloth?.colliders.forEach((col)=>{
-				const o = col.position as Object3D;
-				if( v )
-				{
-					if( o.children.length==0 )
-					{
-						const s = new Mesh(new SphereGeometry(1), new MeshBasicMaterial({color: 0xff0000, wireframe:true})) 
-						o.add( s )
-					}
-					o.children[0].visible = true;
-				}
-				else
-				{
-					if( o.children.length==1)
-						o.children[0].visible = false;
-				}
-			})
-		}).name("Show colliders")
-		//#endregion
+		setupClothInspector(cloth, inspector);
 
 		//rig.position.x = .6
 		//rig.rotateY(1)

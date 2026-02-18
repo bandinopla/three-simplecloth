@@ -8,8 +8,10 @@ import { bloom } from "three/examples/jsm/tsl/display/BloomNode.js";
 import { afterImage } from "three/examples/jsm/tsl/display/AfterImageNode.js";
 import { skirtDemo } from "./skirt-demo.js";
 import { DemoApp } from "./demo-type.js";
+import { dudeMultigrabDemo } from "./dude-multi-grab-demo.js";
 
 const $querystring = new URLSearchParams( location.search);
+const sourceBtn = document.createElement("button");
 
 function bgGradient() {
     // create gradient texture with canvas
@@ -104,10 +106,10 @@ async function main() {
 
 	let playDefaultDemo = true;
 
-	const otherDemos : { id:string, name:string, start:DemoApp, credits?: { title:string, author:string, link:string }[] }[] = [ 
+	const otherDemos : { id:string, name:string, start:DemoApp, credits?: { title:string, author:string, link:string }[], description:string, source:string }[] = [ 
 		{
 			id:"skirt",
-			name:"Skirt demo",
+			name:"Single Grab Point: skirt demo",
 			start: skirtDemo ,
 			credits: [
 				{
@@ -115,7 +117,28 @@ async function main() {
 					author: "max0sAnchez84",
 					link: "https://sketchfab.com/3d-models/woman-posing-8849b89093dd4028915e6aebfe2339c9"
 				}
-			]
+			],
+			description:"Single grabbing point: Click and drag near her skirt to interact with the cloth."
+			, source:"https://github.com/bandinopla/three-simplecloth/blob/main/playground/skirt-demo.ts"
+		},
+		{
+			id:"multi-grab",
+			name:"Multiple Grab Points: dude demo",
+			start: dudeMultigrabDemo,
+			credits: [
+				{
+					title:"camouflage pants + Gap top",
+					author: "MetaCloth",
+					link: "https://sketchfab.com/3d-models/man-green-camouflage-pants-gap-gray-top-87210c1a114c47ecb6dbe9035d079be7"
+				},
+				{
+					title:"Man Base Mesh",
+					author:"Blakk Mato",
+					link:"https://sketchfab.com/3d-models/man-base-mesh-a870a28384fb428da535b6a816fea73e"
+				}
+			],
+			description:"Multiple grabbing points: Click and drag near his shirt ( torso area ) to interact with the cloth, you can do it multiple times to create multiple grab points ( in this example max is 3 points, but you can have many ). Click on a point to delete it."
+			, source:"https://github.com/bandinopla/three-simplecloth/blob/main/playground/dude-multi-grab-demo.ts"
 		}
 	]
 
@@ -129,6 +152,8 @@ async function main() {
 		demoFolder.add({ [d.id]:goto(d.id) },d.id).name(d.name);
 	})
 
+	let sourceUrl = "https://github.com/bandinopla/three-simplecloth/blob/main/playground/main.ts";
+
 	if( $querystring.has("demo") ) { 
 
 		const demo = otherDemos.find(d => d.id === $querystring.get("demo"))
@@ -141,8 +166,19 @@ async function main() {
 			demo.credits?.forEach(c => {
 				credits.innerHTML += `<div>* ${c.title} by <a href="${c.link}"><strong>${c.author}</strong></a></div>`;
 			})
+
+			if( demo.description )
+			{
+				credits.innerHTML += `<br/><div style="font-size:1.5em">${demo.description}</div>`;
+			}
+
+			sourceUrl = demo.source;
 		}
 	}
+
+	sourceBtn.onclick = () => {
+        window.open(sourceUrl,"_blank");
+    };
 
     playDefaultDemo && new GLTFLoader().load("dance.glb", (gltf) => {
         scene.add(gltf.scene);
@@ -254,12 +290,10 @@ if (WebGPU.isAvailable()) {
     // Initiate function or other initializations here
     main();
 
-    const sourceBtn = document.createElement("button");
+    
     sourceBtn.classList.add("source-btn");
     sourceBtn.textContent = "</>";
-    sourceBtn.addEventListener("click", () => {
-        window.open("https://github.com/bandinopla/three-simplecloth/blob/main/playground/main.ts");
-    });
+    
     document.body.appendChild(sourceBtn);
 } else {
     const warning = WebGPU.getErrorMessage();
