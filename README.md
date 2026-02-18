@@ -1,14 +1,20 @@
 > Based on: https://github.com/mrdoob/three.js/blob/a58e9ecf225b50e4a28a934442e854878bc2a959/examples/webgpu_compute_cloth.html
+ 
+![Cover](cover.jpg)
+
 
 ## What is this?
-A module you can use to turn pieces of meshes into cloth-like meshes that will move like cloth... kind of. It has support for colliders (spheres) and grabbing and interacting with the cloth.
+A [Three.js module](https://threejs.org/) you can use to turn pieces of skinned meshes into cloth-like meshes that will move like cloth... kind of. It has support for colliders (spheres) and grabbing and interacting with the cloth.
 
 >Play with the [online demo](https://bandinopla.github.io/three-simplecloth/)
 
 ## How does this work?
 You skin your mesh normally but then you vertex paint in red color the parts that you want to turn into "cloth" and then when you use this module you basically pass a reference to the mesh that contains this painting and it will turn it into a "cloth like" mesh, blending between normal skinned and cloth using this color as a mask.
 
-> Read: [Article explaining implementation](https://medium.com/@pablobandinopla/simple-cloth-simulation-with-three-js-and-compute-shaders-on-skeletal-animated-meshes-acb679a70d9f)
+It is probably advisable to have the cloth portions as separated meshes, not all one big giant mesh including your character. So for example, if only a small portion should be cloth, try to see if you can separate it and turning into a separated skinned mesh under the same rig. This will avoid calculating on the whole mesh and will be more performant. Obviously all part of the same skeleton as a child of the main rig.
+
+> Read: [Article explaining implementation](https://medium.com/@pablobandinopla/simple-cloth-simulation-with-three-js-and-compute-shaders-on-skeletal-animated-meshes-acb679a70d9f) 
+
 
 ## Install
 ```bash
@@ -16,6 +22,7 @@ npm install three-simplecloth
 ```
 
 ## Usage
+Find the examples in the [playground](playground) folder. Initially I did the female bot dancing in main.ts then when I added more examples I wrote separated files for them. So main will contain part of the logic for the dancing robot demo and part of the logic to select the right demo.
 
 ```typescript
 import { SimpleCloth } from "three-simplecloth";
