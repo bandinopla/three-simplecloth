@@ -777,7 +777,7 @@ function setupClothOnSkinnedMesh(
 	 */
 	const assignVerticesToMagnet = Fn(() => { 
 
-	    const magnetPosition = magnet.element(0).xyz;
+	    const magnetPosition = magnet.element(magnetToAssign).xyz;
 	    const selectedIndex = uint(0).toVar();
 	    const minDist = float(10000).toVar("minDist");  // sentinel — no special casing needed
 
@@ -786,17 +786,20 @@ function setupClothOnSkinnedMesh(
 			const vertlet = vPosStore.element(i) ; 
 			const position = vertlet.xyz ; 
 			const dist = position.sub(magnetPosition).length() ; 
+			const currentMagnet = vVertexInts.element(i).y ;
 
-			If( dist.lessThan(minDist), ()=>{
+			// If it already has a magnet, ignore it.
+			If( currentMagnet.equal(0).and( dist.lessThan(minDist) ) , ()=>{
 				minDist.assign(dist);
 				selectedIndex.assign(i); 
 			})
 			
 		}) ;
 
-		const ids = vVertexInts.element(selectedIndex);
-		ids.y.assign(magnetToAssign.add(1));
-	    
+		If( minDist.lessThan(10000), () => {
+			const ids = vVertexInts.element(selectedIndex);
+			ids.y.assign(magnetToAssign.add(1));
+		})  
 
 	})().compute(1).setName("assign Vertices To Magnet"); 
 
@@ -947,31 +950,48 @@ function setupClothOnSkinnedMesh(
 		 * @param strength Strength of the magnet. Default is .5.
 		 * @returns An object with update and release methods.
 		 */
-		activateMagnet: ( magnetIndex:number, worldPos:Vector3, strength = 1 ) => { 
+		activateMagnet: ( magnetIndex:number, worldPos:Vector3|Object3D, strength = 1 ) => { 
  
- 
-			const updateMagnetPosition = ()=>{
+			const v = new Vector3();
+			const getWPos = ()=>{
+				if(worldPos instanceof Vector3)
+				{
+					v.copy(worldPos);
+				}
+				else
+				{
+					worldPos.getWorldPosition(v);
+				}
+				return v;
+			}
+
+			
+
+
+			const updateMagnetPosition = (x:number, y:number, z:number)=>{
 				//
 				// set the value of the magnet to use
 				//
-				magnet.value.setXYZW(magnetIndex , worldPos.x, worldPos.y, worldPos.z, strength);
+				magnet.value.setXYZW(magnetIndex , x, y, z, strength);
 				magnet.value.needsUpdate = true; 
 			}
 
-			mesh.updateMatrixWorld();
+			mesh.updateMatrixWorld(true);
 
 			magnetToAssign.value = magnetIndex;  
+			magnetToAssign.needsUpdate = true;
 
-			updateMagnetPosition()
+			const pos = getWPos();
+			updateMagnetPosition(pos.x, pos.y, pos.z);
 			
 			renderer.compute(assignVerticesToMagnet);   
 
 			return {
-				update: updateMagnetPosition,
-				updatePosition: (x:number, y:number, z:number)=>{
-					worldPos.set(x, y, z);
-					updateMagnetPosition();
+				update: ()=>{
+					const pos = getWPos();
+					updateMagnetPosition(pos.x, pos.y, pos.z);
 				},
+				updatePosition: updateMagnetPosition,
 				deactivate: ()=>{
 					magnet.value.setXYZW(magnetIndex, 0, 0, 0, 0);
 					magnet.value.needsUpdate = true;
