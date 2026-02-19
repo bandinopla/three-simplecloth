@@ -78,9 +78,9 @@ export const skirtDemo: DemoApp = (
 			{
 				colorAttributeName: "color_1",
 				collidersRoot: gltf.scene,
-				colliderRadiusMultiplier: 1.0,
+				colliderRadiusMultiplier: 1.1,
 				windPerSecond: new Vector3(0.01, 0, 0),
-				stiffness: 0.6,
+				stiffness: 0.1,
 				magnets: 1
 			}
 		);

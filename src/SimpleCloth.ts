@@ -419,11 +419,11 @@ function setupClothOnSkinnedMesh(
 	const $cfg : ClothConfig = {
 		colorAttributeName: "color",
 		logStats: false,
-		stiffness: 0.4,
-		dampening: 0.5,
+		stiffness: 0.2,
+		dampening: 0.96,
 		colliderRadiusMultiplier:1,
 		windPerSecond: new Vector3(0,0,0),
-		gravityPerSecond: new Vector3(0, -0.3,0), 
+		gravityPerSecond: new Vector3(0, -9.8,0), 
 		updateMaterial: assumeTheModelCameFromBlenderAndWasTexturedNormally,
 		magnets: 0,
 		...config
@@ -486,7 +486,7 @@ function setupClothOnSkinnedMesh(
 	/**
 	 * Gravity ( force acting on the cloth on every compute )
 	 */
-    const gravityUniform = uniform( $cfg.gravityPerSecond, "vec3");
+    const gravityUniform = uniform( $cfg.gravityPerSecond!, "vec3"); 
 	
 	/**
 	 * Wind (updated on .update)
@@ -550,6 +550,7 @@ function setupClothOnSkinnedMesh(
 	 * W: unused
 	 */
     const springsStore = instancedArray(springs, "uvec4"); 
+	const springForceBuffer = instancedArray(totalSprings * 3, "vec3");
 
 	/**
 	 * array triplets defining a face ( a triangle )
@@ -608,16 +609,13 @@ function setupClothOnSkinnedMesh(
         If(instanceIndex.greaterThanEqual(countOfPoints), () => Return());
 
         const uIndex = indicesStore.element(instanceIndex);
-        const wPos = vPosStore.element(uIndex); 
+        const wPos = vPosStore.element(uIndex);  
         const factor = wPos.w;//.pow(2); // 1 = skinned (Pinned), 0 = cloth (Simulated)
 
-        const skinningWorldPosition = worldMatrix.mul(skinningPosition) ;
+        const skinningWorldPosition = worldMatrix.mul(skinningPosition) ; 
 
-        // Only update if factor > 0 (partially or fully skinned)
-        // If fully cloth (0), we leave it to physics
-        // mix(currentPos, skinningPos, factor). If factor=1, we force it to skinningPos.
-	 
-		wPos.xyz.assign(mix(wPos.xyz, skinningWorldPosition, factor));  
+		// Handover   
+		wPos.xyz.assign(mix(wPos.xyz, skinningWorldPosition, factor));   
 
     })()
     .compute(countOfPoints)
@@ -625,104 +623,113 @@ function setupClothOnSkinnedMesh(
 
 
 	/**
-	 * < CALCULATE SPRING FORCES > 
-	 * Calculates the force of each spring.
-     * This iterates per SPRING (linear with number of springs).
+	 * Calculates the force of each spring
 	 */
- 
+	const computeSpringForces = Fn(()=>{
 
-    /**
-     * < COMPUTE VERTEX FORCES >
-     * Integrates forces and updates position.
-     * Iterates per VERTEX.
-     */
-	const computeVertexForces = Fn(()=>{
+		If( instanceIndex.greaterThanEqual( uint( totalSprings ) ), () => Return() );
 
-		If(instanceIndex.greaterThanEqual(uniqueCount), () => {
-			Return();
-		});
+		const vertexIds = springsStore.element( instanceIndex );
+		const restLength = bitcast( vertexIds.z, "float" );
 
-		const position = vPosStore.element( instanceIndex );
-		const force = vForceStore.element( instanceIndex ) ; 
-		const mask = (position.w).oneMinus(); //.pow(2); // If w=1 (pinned), mask=0. If w=0 (simulated), mask=1.
- 
-	
-	
-		const vertexInts = vVertexInts.element(instanceIndex);
-		const springPointer = vertexInts.x;
+		const vertex0Position = vPosStore.element( vertexIds.x );
+		const vertex1Position = vPosStore.element( vertexIds.y );
+
+		const delta = vertex1Position.sub( vertex0Position ).toVar();
+		const dist = delta.length().max( 0.000001 ).toVar();
+		const force = dist.sub( restLength ).mul( stiffnessUniform ).mul( delta ).mul( 0.5 ).div( dist );
+		springForceBuffer.element( instanceIndex ).assign( force );
 		
-        // springsPerVertexArray layout: [count, id1, id2, ...]
+	})().compute( totalSprings ).setName("computeSpringForces"); 
+
+
+	/**
+	 * Applies the forces to each point + solves folliders & magnets
+	 */
+	const computeVertexForces = Fn( () => {
+
+	    If( instanceIndex.greaterThanEqual( uniqueCount ), () => Return() );
+
+		const vertex = vPosStore.element( instanceIndex )
+	    const position = vertex.xyz ;
+		const clothMask = vertex.w.oneMinus() ; 
+
+	    If( clothMask.equal(0), () => Return() );  
+	    
+	    const force = vForceStore.element( instanceIndex ) ;  
+	    
+		force.mulAssign( dampeningUniform );
+
+
+		const { x:springPointer, y:magnetIndex } = vVertexInts.element(instanceIndex); 
+		 
         const springCount = vSpringsPerVertexArray.element(springPointer);
 
         const ptrStart = springPointer.add(1).toVar("ptrStart");
         const ptrEnd = ptrStart.add(springCount).toVar("ptrEnd");
 
-		force.mulAssign(dampeningUniform);
+	    Loop( { start: ptrStart, end: ptrEnd, type: 'uint', condition: '<' }, ( { i } ) => {
 
-			Loop(
-	            { start: ptrStart, end: ptrEnd, type: "uint", condition: "<" },
-	            ({ i }) => {
-	                const springIndex = vSpringsPerVertexArray.element(i).toVar("springId"); 
-	                const spring = springsStore.element(springIndex).toVar();
-	               
-					//
-					// Inline spring force calculation
-					//
-					const restLength = bitcast(spring.z, "float") ;
-					const Ai = spring.x;
-					const Bi = spring.y;
+	        const springIndex = vSpringsPerVertexArray.element(i).toVar("springId"); 
+	        const spring = springsStore.element(springIndex).toVar();
 
-					// identify neighbor
-					const neighborIndex = select(Ai.equal(instanceIndex), Bi, Ai);
+	        const springForce = springForceBuffer.element( springIndex ); 
+	        const factor = select( spring.x.equal( instanceIndex ), 1.0, - 1.0 );
+	        force.addAssign( springForce.mul( factor ) );
 
-					const posNeighbor = vPosStore.element(neighborIndex).xyz;
-					const delta = posNeighbor.sub(position.xyz);
-					const dist = delta.length().max(0.000001);
-					const dir = delta.div(dist);
-					
-					// Force
-					const f = dist.sub(restLength).mul(stiffnessUniform).mul(0.5);
-					
-					force.addAssign(dir.mul(f));
-	            },
-	        );
+	    } );
 
-		// // Wind
+	     
+		force.addAssign(gravityUniform.mul(dt).mul(dt)); 
+
+
+		// ---------------
+		//  Wind
+		//
         const noise = triNoise3D(position, 1, time).sub(0.2).mul(0.1);
         const windForce = noise.mul(windUniform);
-        force.addAssign(windForce);
+        force.addAssign(windForce.mul(dt) );
 
+
+		//------------------
 		// Sphere collisions
+		//
 		if (colliders) {
 			for (let i = 0; i < colliders.length; i++) {
-				const cPos = collidersStore.element(i).xyz;
-                const cRad = float(collidersStore.element(i).w);
-                
-                // Vector from collider center to vertex
-				const deltaSphere = position.add(force).sub(cPos); 
-				const dist = deltaSphere.length();
-                
-				
 
-                // If inside sphere (dist < radius)
-				const sphereForce = cRad
-					.sub(dist)
-					.max(0)
-					.mul(deltaSphere.normalize())
-					.mul(3)
-                    // Push out
-				force.addAssign(sphereForce);
+				// collision with sphere
+				const cPos = collidersStore.element(i).xyz;
+				const cRad = collidersStore.element(i).w;
+				const deltaSphere = position.add( force ).sub( cPos );
+				const dist = deltaSphere.length();
+				const sphereForce = cRad.sub( dist ).max( 0 ).mul( deltaSphere ).div( dist ) ;
+				force.addAssign( sphereForce.mul( 0.5)  ); 
 			}
 		}
 
-		//force.mulAssign(mask);
-
-		force.addAssign(gravityUniform.mul(mask).mul(dt ) ); 
+		//
+		// Mask the force so the non-cloth vertices are not affected
+		//
+		force.mulAssign( clothMask ); 
+		
 
 		//
-		// Magnet "attraction"
+		// Cap the force so it doesnt act too crazy
 		//
-		const magnetIndex = vVertexInts.element(instanceIndex).y;
+		const forceLength = force.length();
+		const maxForce = 0.01 ;
+		If( forceLength.greaterThan( maxForce ), () => {
+			force.assign( force.normalize().mul( maxForce ) );
+		});
+
+		//
+		// save the force
+		//
+	    vForceStore.element( instanceIndex ).assign( force ); 
+
+		//
+		// Magnet "attraction": if it is being controlled by a magnet, ignore the force.
+		// 
 
 		If( magnetIndex.greaterThan(0), ()=>{
 
@@ -731,22 +738,18 @@ function setupClothOnSkinnedMesh(
 			const magnetStrength = magnetData.w;
 
 			If( magnetStrength.greaterThan(0), ()=>{
-				const magnetForce = magnetPosition.sub(position.xyz).mul(magnetStrength) ;
-				position.xyz.addAssign(magnetForce);
+				const magnetForce = magnetPosition.sub(position).mul(magnetStrength) ;
+				position.addAssign(magnetForce);
 			}) 
 
 		}) 
 		.Else(()=>{
-			position.xyz.addAssign( force    );
-		}) 
- 
-		
-	 
-	 	//force.assign( vec3(0,0,0) );
- 
-		
-	})().compute( uniqueCount ).setName("compute Vertex Forces"); 
+			position.addAssign( force );
+		}) ;
 
+
+	} )().compute( uniqueCount ) 
+  
 	/**
 	 * < CALCULATE REST LENGTHS>
 	 * the leght of each spring is calculated and stored in the Z component of the spring data.
@@ -765,8 +768,7 @@ function setupClothOnSkinnedMesh(
 			const delta = posB.sub(posA);
 			const dist = delta.length().max(0.000001);
 
-			restLength.assign( bitcast(dist, "uint") );
- 
+			restLength.assign( bitcast(dist, "uint") ); 
 
 		});
 	})().compute( totalSprings ).setName("calculate Rest Lengths");  
@@ -902,6 +904,8 @@ function setupClothOnSkinnedMesh(
 		init = true;
 	})
 
+	let timeSinceLastStep = 0;
+	let timestamp = 0;
 
     return {
 
@@ -917,27 +921,36 @@ function setupClothOnSkinnedMesh(
 		 * @param delta seconds passed since last render
 		 * @param steps number of steps to run the simulation ( more steps = more "stable" but slower ) 
 		 */
-        update: (delta: number, steps=11) => {
+        update: (delta: number, steps=360) => {
 
 			if( !init ) return;
 
-			mesh.updateMatrixWorld();
-
-			worldMatrixInverseUniform.value.copy(mesh.matrixWorld).invert();
-            
-			renderer.compute(updateSkinningPoints); 
+			mesh.updateMatrixWorld();  
+			worldMatrixInverseUniform.value.copy(mesh.matrixWorld).invert();  
 
 			//
 			// extract the position of the colliders and send them to the GPU
 			//
-			updateCollidersPositions(); 
+			updateCollidersPositions();   
 
-			dt.value = delta/steps;
+			const deltaTime = Math.min( delta, 1 / 60 ); // don't advance the time too far, for example when the window is out of focus
+			const stepsPerSecond = steps; // ensure the same amount of simulation steps per second on all systems, independent of refresh rate
+			const timePerStep = 1 / stepsPerSecond;
 
-			for(let i=0; i<steps; i++ )
-			{
-				renderer.compute(computeVertexForces);
-			} 
+			dt.value = timePerStep;
+
+			timeSinceLastStep += deltaTime;
+
+			renderer.compute( updateSkinningPoints );
+
+			while ( timeSinceLastStep >= timePerStep ) {
+				// run a verlet system simulation step
+				timestamp += timePerStep;
+				timeSinceLastStep -= timePerStep;
+				 
+				renderer.compute( computeSpringForces );
+				renderer.compute( computeVertexForces );
+			}
         },
 
 		/**

@@ -1,6 +1,6 @@
 {
   "name": "three-simplecloth",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "type": "module",
   "description": "Simple cloth simulation for Three.js WebGPU",
   "repository": {

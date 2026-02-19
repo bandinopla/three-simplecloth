@@ -9,6 +9,7 @@ import { afterImage } from "three/examples/jsm/tsl/display/AfterImageNode.js";
 import { skirtDemo } from "./skirt-demo.js";
 import { DemoApp } from "./demo-type.js";
 import { dudeMultigrabDemo } from "./dude-multi-grab-demo.js";
+import { setupClothInspector } from "./utils/clothInspector.js";
 
 const $querystring = new URLSearchParams( location.search);
 const sourceBtn = document.createElement("button");
@@ -218,7 +219,9 @@ async function main() {
             colorAttributeName: "color_1",
             collidersRoot: rig,
             colliderRadiusMultiplier: 1.4,
-            windPerSecond: new THREE.Vector3(0.01, 0, 0),
+            windPerSecond: new THREE.Vector3(0, 0, 0),
+			dampening:0.95,
+			stiffness:0.1
         });
 
 		const hairCloth = SimpleCloth.onSkinnedMesh(hair, renderer, {
@@ -226,44 +229,21 @@ async function main() {
             collidersRoot: rig,
             colliderRadiusMultiplier: 1.4,
             windPerSecond: new THREE.Vector3(0, 0, 0),
+			dampening:0.95,
+			stiffness:0.1
         });
 
 		const hairMaterial = (hair.material as THREE.MeshNormalNodeMaterial)
 		hairMaterial.colorNode = sin(uv().x.mul(22).add(time.mul(-19).add( sin(uv().y.mul(4)).mul(3) ))) .mul(19).mul( uv().x.pow(2)   ).mul( color("cyan").mul(2)); 
 
-        /**
-         * Add settings to play with...
-         */
-        const folder = inspector.createParameters("cloth");
-        folder
-            .add(cloth.stiffnessUniform, "value", 0.1, 0.6, 0.01)
-            .name("stiffness")
-			.onChange(v => {
-				hairCloth.stiffnessUniform.value = v;
-			});
-        folder
-            .add(cloth.dampeningUniform, "value", 0.01, 1, 0.01)
-            .name("dampening")
-			.onChange(v => {
-				hairCloth.dampeningUniform.value = v;
-			});
-        folder
-            .add(cloth.gravityUniform.value, "y", -1, 0, 0.01)
-            .name("gravity")
-			.onChange(v => {
-				hairCloth.gravityUniform.value.y = v;
-			});
-			;
-        folder.add(cloth.windUniform.value, "x", -0.1, 0.1, 0.01).name("wind")
-			.onChange(v => {
-				console.log(v)
-				hairCloth.windUniform.value.x = v;
-			}); 
+
+		setupClothInspector(cloth, inspector, "cloth");
+		setupClothInspector(hairCloth, inspector, "hair"); 
 
         onEnterFrame = (delta) => {
             mixer.update(delta);
-            cloth.update(delta, 11);
-			hairCloth.update(delta, 11);
+            cloth.update(delta );
+			hairCloth.update(delta);
         };
     });
 

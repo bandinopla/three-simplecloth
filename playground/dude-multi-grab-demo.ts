@@ -96,7 +96,7 @@ export const dudeMultigrabDemo: DemoApp = (
 				collidersRoot: rig,
 				colliderRadiusMultiplier: 1,
 				windPerSecond: new Vector3(0.01, 0, 0),
-				stiffness: 0.6,
+				stiffness: 0.07,
 				magnets: MAGNETS_COUNT
 			}
 		);
