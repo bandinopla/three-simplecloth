@@ -55,7 +55,18 @@ The third parameter is a config object:
 | `magnets` | `number` | [Optional] How many magnets will interact with the cloth (used for grabbing vertices)
 
 # Adding colliders
-The code will scan for objects in `collidersRoot` with `userData.stickto="bonename"` OR `userData.clothCollider=true` properties. It will use the scale X and will asume uniform scale, because colliders are spheres. And on every run it will update the position of the colliders so you can move them via code and the cloth will react to them.
+The code will scan for objects in `config.collidersRoot` with `userData.stickto="bonename"` OR `userData.clothCollider=true` properties. It will use the scale X and will asume uniform scale, because colliders are spheres. And on every run it will update the position of the colliders so you can move them via code and the cloth will react to them.
+
+You will usually pass a reference to the main rig object to it if you put all your colliders as child of the rig. 
+
+Colliders are spheres, set them up in the areas where you think the cloth may collider. Give some air too so the cloth can move.
+
+![Colliders](colliders.png)
+In the picture above, each collider has a "stickto" property set to the name of the bone it should stick to. Some will stick to the arm bone, others to the torso, legs, etc... you just copy paste them and change the name to the corresponding bone in the cloth's skeleton.
+
+# Painting cloth
+Not everything has to be pure red. You can leave some areas intentionally white to help the fabric stick to the mesh and avoid a complete slip of the cloth ( like a dress totally falling down )
+![Colliders](paint.jpg)
 
 # Magnets: Grabbing the cloth
 To create the interaction of grabbing and relesing the cloth the system is designed to, when provided a point in world space, find the closest vertex to that point and "grab" it. Then, you call a callback to release it.
@@ -73,6 +84,9 @@ grabHandler.updatePosition(x,y,z);
 //Then when you want to release it so the vertex go back to normal...
 grabHandler.deactivate()
 ```
+
+# Caveats
+The cloth needs a few moments to settle. You have to leave some time in pose mode for the cloth to adjust then fade in into the animation you want. 
 
  
  # Collab / Improve
