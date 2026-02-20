@@ -6,14 +6,11 @@ import { SimpleCloth } from "../src";
 import { MagnetAPI } from "../src/SimpleCloth";
 import { uv, vec3 } from "three/tsl";
 import { setupClothInspector } from "./utils/clothInspector";
+import { ndc } from "./utils/ndc";
 
 
 
-const ndc = (ev:MouseEvent, target = new Vector2() )=>{  
-					target.x = (ev.clientX / window.innerWidth) * 2 - 1;
-					target.y = -(ev.clientY / window.innerHeight) * 2 + 1;
-					return target;
-		};
+
 
 //
 export const dudeMultigrabDemo: DemoApp = (

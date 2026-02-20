@@ -3,13 +3,15 @@ import { SimpleCloth } from "../src";
 import { GLTFLoader, OrbitControls } from "three/examples/jsm/Addons.js";
 import { Inspector } from "three/examples/jsm/inspector/Inspector.js";
 import WebGPU from "three/examples/jsm/capabilities/WebGPU.js";
-import { color, pass, sin, time, uv } from "three/tsl";
+import { color, float, pass, screenUV, sin, time, uv, vec2 } from "three/tsl";
 import { bloom } from "three/examples/jsm/tsl/display/BloomNode.js";
 import { afterImage } from "three/examples/jsm/tsl/display/AfterImageNode.js";
 import { skirtDemo } from "./skirt-demo.js";
 import { DemoApp } from "./demo-type.js";
 import { dudeMultigrabDemo } from "./dude-multi-grab-demo.js";
 import { setupClothInspector } from "./utils/clothInspector.js";
+import { catwalkDemo } from "./catwalk-demo.js";
+import { chromaticAberration } from "three/examples/jsm/tsl/display/ChromaticAberrationNode.js";
 
 const $querystring = new URLSearchParams( location.search);
 const sourceBtn = document.createElement("button");
@@ -35,11 +37,15 @@ function bgGradient() {
 }
 
 async function main() {
+
+	let controls: OrbitControls | undefined;
     // --- Renderer ---
     const renderer = new THREE.WebGPURenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;  
+	renderer.toneMapping = THREE.ReinhardToneMapping;
+	renderer.toneMappingExposure = 1.1;
 
     const inspector = new Inspector();
 
@@ -54,8 +60,7 @@ async function main() {
     const scene = new THREE.Scene();
 
     scene.background = bgGradient();
-    scene.add(new THREE.GridHelper(2, 10));
-	scene.add(new THREE.AxesHelper(.2));
+   
 
     // --- Camera ---
     const camera = new THREE.PerspectiveCamera(
@@ -69,41 +74,50 @@ async function main() {
 
 	const post = new THREE.PostProcessing(renderer);
 	const renderPass = pass(scene, camera);
-	const bloomPass = bloom(renderPass, 1, 1, 0.8)
-	post.outputNode = afterImage( renderPass.add( bloomPass ), 0.6 );
+	const bloomPass = bloom(renderPass, 2, 1, 0.8)
+	const abberration = chromaticAberration(renderPass.getTextureNode(), float( screenUV.x.sub(0.5).abs() ).mul(3), vec2(0.5, 0.5) );
+	post.outputNode = afterImage( abberration.add( bloomPass ), 0.6 );
 
-    // --- Lighting ---
-	const ssize = 2;
-    const rim = new THREE.PointLight(0xffffff, 10, 14);
-    rim.position.set(-1, 1, -3);
-	rim.castShadow = true;
-	rim.shadow.bias = -0.0009;
-	rim.shadow.mapSize = new THREE.Vector2(1024 * 2, 1024 * 2); 
 
-    scene.add(rim);
+	const defaultSceneSetup = ()=>{
+		scene.add(new THREE.GridHelper(2, 10));
+		scene.add(new THREE.AxesHelper(.2));
 
-	
-    const dl = new THREE.DirectionalLight();
-    dl.castShadow = true;
-    dl.position.set(4, 5, 2);
-    dl.shadow.bias = -0.0009;
-    dl.shadow.camera.far = 11;
-    
-    dl.shadow.mapSize = new THREE.Vector2(1024 * 2, 1024 * 2);
-    dl.shadow.camera.top = -ssize;
-    dl.shadow.camera.bottom = ssize;
-    dl.shadow.camera.left = -ssize;
-    dl.shadow.camera.right = ssize;
+	    // --- Lighting ---
+		const ssize = 2;
+	    const rim = new THREE.PointLight(0xffffff, 10, 14);
+	    rim.position.set(-1, 1, -3);
+		rim.castShadow = true;
+		rim.shadow.bias = -0.0009;
+		rim.shadow.mapSize = new THREE.Vector2(1024 * 2, 1024 * 2); 
 
-    scene.add(dl);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+	    scene.add(rim);
 
-	const controls = new OrbitControls(camera, renderer.domElement);
+		
+	    const dl = new THREE.DirectionalLight();
+	    dl.castShadow = true;
+	    dl.position.set(4, 5, 2);
+	    dl.shadow.bias = -0.0009;
+	    dl.shadow.camera.far = 11;
+	    
+	    dl.shadow.mapSize = new THREE.Vector2(1024 * 2, 1024 * 2);
+	    dl.shadow.camera.top = -ssize;
+	    dl.shadow.camera.bottom = ssize;
+	    dl.shadow.camera.left = -ssize;
+	    dl.shadow.camera.right = ssize;
+
+	    scene.add(dl);
+	    scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+
+		
+	    // --- Cloth ---
+	}
+
+	controls = new OrbitControls(camera, renderer.domElement);
 	controls.enableDamping = true;
 	controls.rotateSpeed = 0.5;
 	controls.autoRotate = true;
 	controls.autoRotateSpeed = 0.5;
-    // --- Cloth ---
 
 	let playDefaultDemo = true;
 
@@ -140,6 +154,35 @@ async function main() {
 			],
 			description:"Multiple grabbing points: Click and drag near his shirt ( torso area ) to interact with the cloth, you can do it multiple times to create multiple grab points ( in this example max is 3 points, but you can have many ). Click on a point to delete it."
 			, source:"https://github.com/bandinopla/three-simplecloth/blob/main/playground/dude-multi-grab-demo.ts"
+		},
+		{
+			id:"catwalk",
+			name:"Adjustable colliders: Runway model",
+			start: catwalkDemo,
+			credits: [
+				{
+					title:"Dress",
+					author: "samsikua",
+					link: "https://sketchfab.com/3d-models/dress-e110815707f54793ae91f89d2c5bb06a#download"
+				},
+				{
+					title:"Woman",
+					link:"https://sketchfab.com/3d-models/scifi-girl-v01-96340701c2ed4d37851c7d9109eee9c0",
+					author:"patrix"
+				},
+				{
+					title:"Shoes",
+					author:"Lavisher",
+					link:"https://sketchfab.com/3d-models/caged-heels-v1-59621d3f795d4d7ca6fabec08912bd2e"
+				},
+				{
+					title:"Animation",
+					author:"Mixamo",
+					link:"https://www.mixamo.com/"
+				}
+			],
+			description:"Multiple grabbing points: Click and drag near her dress to create a sticky point. Click on a point to delete it. Click and drag to re position it."
+			, source:"https://github.com/bandinopla/three-simplecloth/blob/main/playground/catwalk-demo.ts"
 		}
 	]
 
@@ -154,13 +197,18 @@ async function main() {
 	})
 
 	let sourceUrl = "https://github.com/bandinopla/three-simplecloth/blob/main/playground/main.ts";
+	let sceneSetup:VoidFunction|undefined = defaultSceneSetup;
 
 	if( $querystring.has("demo") ) { 
 
 		const demo = otherDemos.find(d => d.id === $querystring.get("demo"))
 		if( demo ) {
 			playDefaultDemo = false;
-			onEnterFrame = demo.start(renderer, scene, camera, controls, inspector);
+			onEnterFrame = demo.start(renderer, scene, camera, controls, inspector, ()=>{
+				sceneSetup=undefined
+				controls!.enabled = false
+				controls = undefined;
+			} );
 
 			const credits = document.getElementById("credits")!;
 			credits.innerHTML = ""
@@ -176,6 +224,8 @@ async function main() {
 			sourceUrl = demo.source;
 		}
 	}
+
+	sceneSetup?.();
 
 	sourceBtn.onclick = () => {
         window.open(sourceUrl,"_blank");
@@ -259,7 +309,7 @@ async function main() {
 
     renderer.setAnimationLoop(() => {
         const delta = clock.getDelta();
-		controls.update();
+		controls?.update();
         onEnterFrame?.(delta);
         //renderer.render(scene, camera);
 		post.render()
