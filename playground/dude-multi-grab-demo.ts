@@ -7,7 +7,7 @@ import { MagnetAPI } from "../src/SimpleCloth";
 import { uv, vec3 } from "three/tsl";
 import { setupClothInspector } from "./utils/clothInspector";
 import { ndc } from "./utils/ndc";
-
+import $mouse from './utils/mouse-events';
 
 
 
@@ -32,7 +32,7 @@ export const dudeMultigrabDemo: DemoApp = (
 
 	let hitAreas : { shirt:Object3D|undefined, pants:Object3D|undefined } = { shirt:undefined, pants:undefined };
 
-	const handleGrabOn = ( hitArea:Object3D, cloth:ClothHandler, ev:MouseEvent )=>{
+	const handleGrabOn = ( hitArea:Object3D, cloth:ClothHandler, ev:{clientX:number, clientY:number} )=>{
 
 		const intersects = raycaster.intersectObjects([hitArea, ...magnets.map(m=>m.icon)]);
 		if (intersects.length > 0) {
@@ -123,18 +123,17 @@ export const dudeMultigrabDemo: DemoApp = (
 				bone.attach(o!) 
 		}) 
 
-		renderer.domElement.addEventListener("mousedown", ev => {
-			if( ev.button !== 0 ) return;
+		$mouse.onMouseDown((x,y)=>{
 
-			const screenPos = ndc(ev);
+			const screenPos = ndc({clientX:x, clientY:y});
 			raycaster.setFromCamera(screenPos, camera);
  
 
-			handleGrabOn( hitAreas.shirt!, shirt!, ev ); 
+			handleGrabOn( hitAreas.shirt!, shirt!, {clientX:x, clientY:y} ); 
 			//handleGrabOn( hitAreas.pants!, pants!, ev ); 
 		});
 
-		renderer.domElement.addEventListener("mouseup", ev => {
+		$mouse.onMouseUp((x,y)=>{
 			isDragging = false;
 			controls.enabled = true;
 		})
@@ -171,12 +170,12 @@ class MagnetHandler {
 			this.control?.update()
 		}
 
-		window.addEventListener("mousemove", ev => {
+		$mouse.onMouseMove((x,	y)=>{
 			if( !this.isDragging ) return;
 
 			this.moved = true;
 
-			const screenPos = ndc(ev);
+			const screenPos = ndc({clientX:x, clientY:y});
 			raycaster.setFromCamera(screenPos, camera);
 			
 			const point = raycaster.ray.origin
@@ -189,7 +188,7 @@ class MagnetHandler {
 			this.icon.parent?.worldToLocal(this.icon.position) 
 		})
 
-		window.addEventListener("mouseup", ev => {
+		$mouse.onMouseUp((x,y)=>{
 			this.isDragging = false;
 			if( !this.moved )
 			{

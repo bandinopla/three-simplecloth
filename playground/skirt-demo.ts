@@ -24,6 +24,9 @@ import { color, Fn, positionLocal, uv } from "three/tsl";
 import { Inspector } from "three/examples/jsm/inspector/Inspector.js";
 import { MagnetAPI } from "../src/SimpleCloth";
 import { setupClothInspector } from "./utils/clothInspector";
+import $mouse from './utils/mouse-events';
+import { ndc } from "./utils/ndc";
+import { isMobile } from "./utils/isMobile";
 
 export const skirtDemo: DemoApp = (
     renderer: WebGPURenderer,
@@ -63,7 +66,7 @@ export const skirtDemo: DemoApp = (
                 camera.fov = o.fov;
                 camera.updateProjectionMatrix();
    
-				controls.target.set(0, 0.4, 0);
+				controls.target.set(0, isMobile? .8: 0.4, 0);
 
 				controls.update();
             }
@@ -100,20 +103,15 @@ export const skirtDemo: DemoApp = (
 
 		const $screenPos = new Vector2();
 		let clickDistance = 0;
-		const updateScreenPos = (ev:MouseEvent, target?:Vector2 )=>{ 
-			target = target || $screenPos;
-			target.x = (ev.clientX / window.innerWidth) * 2 - 1;
-			target.y = -(ev.clientY / window.innerHeight) * 2 + 1;
-			return target;
+		const updateScreenPos = (ev:{clientX:number, clientY:number}, target?:Vector2 )=>{ 
+			return ndc(ev, target ?? $screenPos);
 		};
 
-		renderer.domElement.addEventListener("mousedown", ev => {
+		$mouse.onMouseDown((x,y)=>{ 
 
-			if( ev.button !== 0 ) return;
-			
 			clicked = true; 
   
-			updateScreenPos(ev)
+			updateScreenPos({clientX:x, clientY:y})
 
 			//raycast the scene
 			const raycaster = new Raycaster();
@@ -133,16 +131,16 @@ export const skirtDemo: DemoApp = (
 			}
 		});
 
-		renderer.domElement.addEventListener("mouseup", ev => {
+		$mouse.onMouseUp((x,y)=>{
 			$mousePosition?.deactivate();
 			$mousePosition = undefined;
 			controls.enabled = true;
 		});
 
-		renderer.domElement.addEventListener("mousemove", ev => {
+		$mouse.onMouseMove	((x,y)=>{
 	 
 			if (clicked && $mousePosition) {
-				updateScreenPos(ev, $screenPos);
+				updateScreenPos({clientX:x, clientY:y}, $screenPos);
 				
 				// give me a vector3 that is at distance clickDistance from the camera in the direction of the mouse position
 				const raycaster = new Raycaster();

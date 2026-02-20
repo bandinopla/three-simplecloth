@@ -7,6 +7,7 @@ import { add, color,normalize, cos, dot, float, mul, mx_noise_float, normalWorld
 import { ndc } from "./utils/ndc";
 import { MagnetHandler } from "../src/SimpleCloth";
 import { setupClothInspector } from "./utils/clothInspector";
+import $mouse from './utils/mouse-events';
  
 //
 export const catwalkDemo: DemoApp = (
@@ -280,9 +281,10 @@ export const catwalkDemo: DemoApp = (
 
 		//
 		// handle interaction...
-		//
-		const onMouseDown = (ev:{clientX:number, clientY:number})=>{
-			const screenPos = ndc(ev);	
+		// 
+
+		$mouse.onMouseDown((x,y)=>{
+			const screenPos = ndc({clientX:x, clientY:y});	
 			
 			raycaster.setFromCamera(screenPos, camera);
 			const hit = raycaster.intersectObject(scene)
@@ -301,13 +303,8 @@ export const catwalkDemo: DemoApp = (
 				// set as magnet
 				ax.startHandling(cloth!.activateMagnet( ax.index, ax )); 
 			} 
-		}
-
-		renderer.domElement.addEventListener("pointerdown", onMouseDown)
-		renderer.domElement.addEventListener("touchstart", ev=>{
-			ev.stopImmediatePropagation()
-			onMouseDown({clientX:ev.touches[0].clientX, clientY:ev.touches[0].clientY})
 		})
+ 
 	})
 
 	let t = 0;
@@ -380,20 +377,12 @@ class MagnetGizmo extends Mesh
 			}
 		}
 
-		window.addEventListener("mousemove", ev=>{
-			onMouseMove(ev.clientX, ev.clientY);
+
+		$mouse.onMouseMove((x,y,dx,dy)=>{
+			onMouseMove(x,y);
 		});
 
-		// Mobile equivalent
-		window.addEventListener("touchmove", ev => {
-			ev.preventDefault(); // Prevent scrolling while touching
-			const touch = ev.touches[0]; // Get first touch point
-			const x = touch.clientX;
-			const y = touch.clientY;
-			onMouseMove(x,y)
-		}, { passive: false });
-
-		window.addEventListener("mouseup",ev=>{
+		$mouse.onMouseUp((x,y)=>{
 			this.active = false; 
 			if( !this.moved )
 			{
