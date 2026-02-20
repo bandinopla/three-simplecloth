@@ -1,4 +1,4 @@
-import { AmbientLight, AnimationMixer, AxesHelper, CubeCamera, DirectionalLight, HemisphereLight, Mesh, MeshBasicNodeMaterial, MeshPhysicalNodeMaterial, Node, Object3D, PerspectiveCamera, PMREMGenerator, Raycaster, Scene, SkinnedMesh, SphereGeometry, Vector3, WebGLCubeRenderTarget, WebGPURenderer } from "three/webgpu";
+import { AmbientLight, AnimationMixer, AxesHelper, CubeCamera, DirectionalLight, HemisphereLight, Mesh, MeshBasicNodeMaterial, MeshPhysicalNodeMaterial, Node, Object3D, PerspectiveCamera, PMREMGenerator, Raycaster, Scene, SkinnedMesh, SphereGeometry, Vector2, Vector3, WebGLCubeRenderTarget, WebGPURenderer } from "three/webgpu";
 import { ClothHandler, DemoApp } from "./demo-type";
 import { DRACOLoader, GLTFLoader, OrbitControls, RoomEnvironment } from "three/examples/jsm/Addons.js";
 import { Inspector } from "three/examples/jsm/inspector/Inspector.js";
@@ -88,6 +88,7 @@ export const catwalkDemo: DemoApp = (
 	//
 	const folder = inspector.createParameters("setting");
 	
+	
 
 	let mixer:AnimationMixer|undefined;
 	let cloth:ClothHandler|undefined;
@@ -114,6 +115,7 @@ export const catwalkDemo: DemoApp = (
 			if(o instanceof Mesh){
 				o.castShadow = true;
 				o.receiveShadow = true;
+				o.frustumCulled = false;
 			}
 			else if (o instanceof PerspectiveCamera){
 				camera.position.copy(o.position);
@@ -279,9 +281,7 @@ export const catwalkDemo: DemoApp = (
 		//
 		// handle interaction...
 		//
-		
-
-		renderer.domElement.addEventListener("pointerdown", (ev)=>{
+		const onMouseDown = (ev:{clientX:number, clientY:number})=>{
 			const screenPos = ndc(ev);	
 			
 			raycaster.setFromCamera(screenPos, camera);
@@ -300,8 +300,13 @@ export const catwalkDemo: DemoApp = (
 				
 				// set as magnet
 				ax.startHandling(cloth!.activateMagnet( ax.index, ax )); 
-			}
-			console.log("POINTER DOWN", hit)
+			} 
+		}
+
+		renderer.domElement.addEventListener("pointerdown", onMouseDown)
+		renderer.domElement.addEventListener("touchstart", ev=>{
+			ev.stopImmediatePropagation()
+			onMouseDown({clientX:ev.touches[0].clientX, clientY:ev.touches[0].clientY})
 		})
 	})
 
@@ -342,12 +347,26 @@ class MagnetGizmo extends Mesh
 
 		this.layers.enable(1);
 
-		window.addEventListener("mousemove", ev=>{
+		let lastpos = new Vector2(0,0);
+		const onMouseMove = (x:number, y:number)=>{
 			if( this.active )
 			{
-				this.moved = true;
+				
 
-				const screenPos = ndc(ev);
+				const dx = x - lastpos.x;
+				const dy = y - lastpos.y;
+
+				if( Math.abs(dx) < 8 && Math.abs(dy) < 8 ) {
+ 
+					return;
+				};
+
+				this.moved = true;
+				
+				lastpos.set(x,y)
+
+				const screenPos = ndc({clientX:x, clientY:y});
+				
 
 				raycaster.setFromCamera(screenPos, camera);
 
@@ -359,7 +378,20 @@ class MagnetGizmo extends Mesh
 				this.lookAt(this.camera.position);
 				this.handler?.update()
 			}
+		}
+
+		window.addEventListener("mousemove", ev=>{
+			onMouseMove(ev.clientX, ev.clientY);
 		});
+
+		// Mobile equivalent
+		window.addEventListener("touchmove", ev => {
+			ev.preventDefault(); // Prevent scrolling while touching
+			const touch = ev.touches[0]; // Get first touch point
+			const x = touch.clientX;
+			const y = touch.clientY;
+			onMouseMove(x,y)
+		}, { passive: false });
 
 		window.addEventListener("mouseup",ev=>{
 			this.active = false; 
@@ -395,7 +427,7 @@ class MagnetGizmo extends Mesh
 
 	resume() { 
 		this.active = true;
-		this.moved = false;
+		this.moved = false; 
 	}
 
 	stop() {

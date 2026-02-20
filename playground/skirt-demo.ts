@@ -56,7 +56,7 @@ export const skirtDemo: DemoApp = (
             if (o instanceof SkinnedMesh) {
                 o.castShadow = true;
                 o.receiveShadow = true;
-				console.log( o.name )
+				o.frustumCulled = false;
             } else if ( o instanceof PerspectiveCamera) {
                 camera.position.copy(o.position);
                 camera.quaternion.copy(o.quaternion);

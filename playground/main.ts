@@ -12,6 +12,7 @@ import { dudeMultigrabDemo } from "./dude-multi-grab-demo.js";
 import { setupClothInspector } from "./utils/clothInspector.js";
 import { catwalkDemo } from "./catwalk-demo.js";
 import { chromaticAberration } from "three/examples/jsm/tsl/display/ChromaticAberrationNode.js";
+import { isMobile } from "./utils/isMobile.js";
 
 const $querystring = new URLSearchParams( location.search);
 const sourceBtn = document.createElement("button");
@@ -48,6 +49,7 @@ async function main() {
 	renderer.toneMappingExposure = 1.1;
 
     const inspector = new Inspector();
+	 
 
     renderer.inspector = inspector;
 
@@ -76,7 +78,7 @@ async function main() {
 	const renderPass = pass(scene, camera);
 	const bloomPass = bloom(renderPass, 2, 1, 0.8)
 	const abberration = chromaticAberration(renderPass.getTextureNode(), float( screenUV.x.sub(0.5).abs() ).mul(3), vec2(0.5, 0.5) );
-	post.outputNode = afterImage( abberration.add( bloomPass ), 0.6 );
+	post.outputNode = isMobile? renderPass : afterImage( renderPass.add( bloomPass ), 0.6 );
 
 
 	const defaultSceneSetup = ()=>{
