@@ -34,6 +34,7 @@ import {
 	transformNormalToView,
 	uint,
 	bitcast,
+	vec3,
 } from "three/tsl";
 import {
 	MeshPhysicalNodeMaterial,
@@ -264,6 +265,8 @@ type ClothConfig = {
 	stiffness?: number;
 	dampening?: number;
 
+	maskMultiplier?: number;
+
 	/**
 	 * you can tweak the radius of the colliders ( which are spheres attached to bones )
 	 * 
@@ -287,6 +290,11 @@ type ClothConfig = {
 	magnets:number;
 
 	/**
+	 * The distance at which a teleport is assumed
+	 */
+	teleportDistance?:number;
+
+	/**
 	 * The material used by the SkinnedMesh to turn into "cloth" must apply and use these TSL nodes...
 	 * By default it will try to guess the most common case when you import a model from blender...
 	 * 
@@ -295,6 +303,12 @@ type ClothConfig = {
 	 * @returns 
 	 */
 	updateMaterial: ( base:Material, positionNode:Node, normalNode:Node ) => NodeMaterial
+}
+
+export type MagnetHandler = {
+	update:()=>void;
+	updatePosition:(x:number, y:number, z:number)=>void;
+	deactivate:()=>void;
 }
  
 
@@ -426,6 +440,8 @@ function setupClothOnSkinnedMesh(
 		gravityPerSecond: new Vector3(0, -9.8,0), 
 		updateMaterial: assumeTheModelCameFromBlenderAndWasTexturedNormally,
 		magnets: 0,
+		maskMultiplier: 1,
+		teleportDistance: 2,
 		...config
 	}
 
@@ -477,11 +493,17 @@ function setupClothOnSkinnedMesh(
 
     const stiffnessUniform = uniform($cfg.stiffness); 
     const dampeningUniform = uniform($cfg.dampening); 
+	const maskMultiplierUniform = uniform($cfg.maskMultiplier); 
  
 	/**
 	 * Delta time (updated on .update)
 	 */
-    const dt = uniform(0);
+    const dt = uniform(0); 
+
+	/**
+	 * distance at which we consider the point has been artificially teleported
+	 */
+	const teleportDistanceUniform = uniform($cfg.teleportDistance!);
 
 	/**
 	 * Gravity ( force acting on the cloth on every compute )
@@ -591,9 +613,12 @@ function setupClothOnSkinnedMesh(
 
         const uIndex = indicesStore.element(instanceIndex);
         const wPos = vPosStore.element(uIndex); 
+
+		const force = vForceStore.element( uIndex ) ; 
      
         const skinningWorldPosition = worldMatrix.mul(skinningPosition) ;
         wPos.xyz.assign(skinningWorldPosition) ; 
+		force.assign( vec3(0,0,0) );
 
     })()
     .compute(countOfPoints)
@@ -610,12 +635,15 @@ function setupClothOnSkinnedMesh(
 
         const uIndex = indicesStore.element(instanceIndex);
         const wPos = vPosStore.element(uIndex);  
-        const factor = wPos.w;//.pow(2); // 1 = skinned (Pinned), 0 = cloth (Simulated)
+        const factor = wPos.w.mul(maskMultiplierUniform).toVar() ;//.pow(2); // 1 = skinned (Pinned), 0 = cloth (Simulated)
 
-        const skinningWorldPosition = worldMatrix.mul(skinningPosition) ; 
+        const skinningWorldPosition = worldMatrix.mul(skinningPosition) ;  
+
+		const dist = wPos.xyz.sub(skinningWorldPosition).length();
+		const teleportFactor = dist.greaterThan(teleportDistanceUniform);
 
 		// Handover   
-		wPos.xyz.assign(mix(wPos.xyz, skinningWorldPosition, factor));   
+		wPos.xyz.assign(mix(wPos.xyz, skinningWorldPosition, select(teleportFactor, 1, factor)));   
 
     })()
     .compute(countOfPoints)
@@ -652,7 +680,7 @@ function setupClothOnSkinnedMesh(
 
 		const vertex = vPosStore.element( instanceIndex )
 	    const position = vertex.xyz ;
-		const clothMask = vertex.w.oneMinus() ; 
+		const clothMask = vertex.w.oneMinus().mul(maskMultiplierUniform) ; 
 
 	    If( clothMask.equal(0), () => Return() );  
 	    
@@ -894,18 +922,22 @@ function setupClothOnSkinnedMesh(
 
 	let init = false;
 
+	const resetClothPosition = ()=>renderer.compute( initializeSkinningPosition )
+ 
+
 	//
 	// I do it this way because if you set the position of the rig before adding it to the scene it will calculate all wrong
 	// and I haven't figured out how to fix that yet.
 	//
 	requestAnimationFrame(()=>{
-		renderer.compute( initializeSkinningPosition );
+		resetClothPosition();
 		renderer.compute( calculateRestLengths ); 
-		init = true;
+		init = true; 
 	})
 
 	let timeSinceLastStep = 0;
 	let timestamp = 0;
+	
 
     return {
 
@@ -914,6 +946,9 @@ function setupClothOnSkinnedMesh(
 		gravityUniform,
 		windUniform,
 		colliders, 
+		mesh,
+
+		reset: resetClothPosition,
 
 		/** 
 		 * Runs the cloth simulation...
@@ -1011,7 +1046,7 @@ function setupClothOnSkinnedMesh(
 					magnetToAssign.value = magnetIndex;
 					renderer.compute(removeVerticesFromMagnet);
 				}
-			}
+			} as MagnetHandler;
 		}
     };
 }
